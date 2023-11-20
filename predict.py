@@ -12,6 +12,9 @@ from zipfile import ZipFile
 import aiohttp
 from cog import BaseModel, BasePredictor, Input, Path
 
+if __name__ == '__main__':
+  def Input(default=None, **kwargs):
+    return default
 
 class Output(BaseModel):
     video: Path
@@ -48,14 +51,8 @@ async def download_and_save_image(session, url, temp_dir, frame_number):
         return None
 
 
-async def parse_json_string_and_save_images(json_string):
+async def save_images(image_urls):
     try:
-        parsed_data = json.loads(json_string)
-
-        # Check if the parsed data is a list
-        if not isinstance(parsed_data, list):
-            raise ValueError("The parsed data is not a list.")
-
         async with aiohttp.ClientSession() as session:
             # Create a temporary directory
             temp_dir = tempfile.mkdtemp()
@@ -63,9 +60,10 @@ async def parse_json_string_and_save_images(json_string):
             # Check if all elements in the list are valid URLs and download/save images
             tasks = [
                 download_and_save_image(session, url, temp_dir, frame_number)
-                for frame_number, url in enumerate(parsed_data)
+                for frame_number, url in enumerate(image_urls)
                 if await is_valid_url(session, url)
             ]
+            print(image_urls)
 
             saved_images = await asyncio.gather(*tasks)
 
@@ -118,7 +116,7 @@ class Predictor(BasePredictor):
 
     def predict(
         self,
-        image_urls: str = Input(description="A list of input urls"),
+        image_urls: str = Input(description="A comma-separated list of input urls"),
         mp4: bool = Input(
             description="Returns .mp4 if true or .gif if false", default=False
         ),
@@ -129,8 +127,10 @@ class Predictor(BasePredictor):
     ) -> Output:
         """Run a single prediction on the model"""
         saved_images, temp_dir = asyncio.run(
-            parse_json_string_and_save_images(image_urls)
+            save_images(image_urls.split(','))
         )
+        print(saved_images, temp_dir)
+        output = Output(video=Path("."))
         if saved_images and temp_dir:
             output_filename = "animated.mp4" if mp4 else "animated.gif"
             if os.path.exists(output_filename):
@@ -146,3 +146,9 @@ class Predictor(BasePredictor):
                         zip.write(file_path, arcname=file_path.relative_to(temp_dir))
                 output.zip = Path(zip_filename)
         return output
+
+if __name__ == "__main__":
+    p = Predictor()
+    p.setup()
+    path = p.predict(image_urls='https://replicate.delivery/pbxt/5vdMFR1RHG6RPFsMVzEGxPnRAXa9KyvwoPq8bAznqM3vme7IA/out-0.png,https://replicate.delivery/pbxt/ccKt8qPuXMbCM53UlgyT4D6zfw5WsG19QeBYpEhz5IgHa63RA/out-0.png,https://replicate.delivery/pbxt/D7rN80QU5JbuKlpfJEruTfLsPNPNZmc7hwpjNeB6nEOR30vjA/out-0.png')
+    print(path)
